@@ -1,6 +1,6 @@
 ---
 # Common variables for all hosts
-domain: "domain.com"
+domain: "website"
 app_user: "app_user"
 app_group: "www-data"
 app_dir: "/var/www/{{ domain }}"
