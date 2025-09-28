@@ -86,31 +86,38 @@
     state: directory
     mode: '0755'
 
+- name: Check if fail2ban service exists
+  stat:
+    path: /lib/systemd/system/fail2ban.service
+  register: fail2ban_service_file
+
+- name: Alternative fail2ban service check
+  stat:
+    path: /etc/systemd/system/fail2ban.service
+  register: fail2ban_service_alt
+
+- name: Reload systemd daemon
+  systemd:
+    daemon_reload: yes
+
 - name: Configure fail2ban for SSH
-  copy:
-    content: |
+  blockinfile:
+    create: yes
+    block: |
       [sshd]
       enabled = true
       port = ssh
       filter = sshd
       logpath = /var/log/auth.log
-      maxretry = 3
+      maxretry = 5
       bantime = 3600
-      findtime = 600
     dest: /etc/fail2ban/jail.d/sshd.conf
   notify: restart fail2ban
 
 - name: Configure fail2ban for nginx
-  copy:
-    content: |
-      [nginx-http-auth]
-      enabled = true
-      filter = nginx-http-auth
-      port = http,https
-      logpath = /var/log/nginx/error.log
-      maxretry = 5
-      bantime = 3600
-      
+  blockinfile:
+    create: yes
+    block: |
       [nginx-limit-req]
       enabled = true
       filter = nginx-limit-req
@@ -120,34 +127,27 @@
       bantime = 600
     dest: /etc/fail2ban/jail.d/nginx.conf
   notify: restart fail2ban
-  when: inventory_hostname in groups['nginx']
+  when: inventory_hostname in groups['web_servers']
 
-- name: Wait for fail2ban to be ready
-  wait_for:
-    path: /var/run/fail2ban/fail2ban.sock
-    timeout: 30
-  ignore_errors: yes
-
-- name: Start and enable fail2ban
+- name: Start and enable fail2ban (if service exists)
   systemd:
     name: fail2ban
     state: started
     enabled: yes
     daemon_reload: yes
+  when: fail2ban_service_file.stat.exists or fail2ban_service_alt.stat.exists
   ignore_errors: yes
 
 - name: Check fail2ban status
-  command: systemctl is-active fail2ban
+  command: systemctl status fail2ban
   register: fail2ban_status
   ignore_errors: yes
+  when: fail2ban_service_file.stat.exists or fail2ban_service_alt.stat.exists
 
-- name: Force restart fail2ban if needed
-  systemd:
-    name: fail2ban
-    state: restarted
-    daemon_reload: yes
-  when: fail2ban_status.stdout != "active"
-  ignore_errors: yes
+- name: Debug fail2ban service issue
+  debug:
+    msg: "Fail2ban service not found or failed to start. Status: {{ fail2ban_status.stdout if fail2ban_status is defined else 'Service file not found' }}"
+  when: not (fail2ban_service_file.stat.exists or fail2ban_service_alt.stat.exists) or (fail2ban_status is defined and fail2ban_status.rc != 0)
 
 - name: Set timezone
   timezone:
