@@ -51,12 +51,14 @@
     name: postgres
     password: "{{ vault_postgres_password }}"
   become_user: postgres
+  when: postgresql_service.stat.exists or postgresql_versioned_service.stdout != ""
 
 - name: Create application database
   postgresql_db:
     name: "{{ db_name }}"
     owner: postgres
   become_user: postgres
+  when: postgresql_service.stat.exists or postgresql_versioned_service.stdout != ""
 
 - name: Create application user
   postgresql_user:
@@ -65,6 +67,7 @@
     db: "{{ db_name }}"
     priv: ALL
   become_user: postgres
+  when: postgresql_service.stat.exists or postgresql_versioned_service.stdout != ""
 
 - name: Create replication user
   postgresql_user:
@@ -72,6 +75,7 @@
     password: "{{ vault_db_replication_password }}"
     role_attr_flags: REPLICATION
   become_user: postgres
+  when: postgresql_service.stat.exists or postgresql_versioned_service.stdout != ""
 
 - name: Configure PostgreSQL for replication
   lineinfile:
@@ -86,6 +90,7 @@
     - { regexp: '^#?wal_keep_size', line: "wal_keep_size = 64MB" }
     - { regexp: '^#?hot_standby', line: "hot_standby = on" }
   notify: restart postgresql
+  when: postgresql_service.stat.exists or postgresql_versioned_service.stdout != ""
 
 - name: Configure pg_hba.conf for replication
   blockinfile:
@@ -98,6 +103,7 @@
       host {{ db_name }} {{ db_user }} 127.0.0.1/32 md5
     backup: yes
   notify: restart postgresql
+  when: postgresql_service.stat.exists or postgresql_versioned_service.stdout != ""
 
 - name: Create clicks table
   postgresql_query:
@@ -126,6 +132,7 @@
       CREATE INDEX IF NOT EXISTS idx_clicks_ip ON clicks(ip_address);
       CREATE INDEX IF NOT EXISTS idx_clicks_decision ON clicks(decision);
   become_user: postgres
+  when: postgresql_service.stat.exists or postgresql_versioned_service.stdout != ""
 
 - name: Setup backup script
   template:
