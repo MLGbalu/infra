@@ -163,8 +163,26 @@
     name: chrony
     state: present
 
-- name: Start and enable chrony
+- name: Check if chrony service exists
+  stat:
+    path: /lib/systemd/system/chrony.service
+  register: chrony_service_file
+
+- name: Alternative chrony service check
+  stat:
+    path: /etc/systemd/system/chrony.service
+  register: chrony_service_alt
+
+- name: Start and enable chrony (if service exists)
   systemd:
     name: chrony
     state: started
     enabled: yes
+    daemon_reload: yes
+  when: chrony_service_file.stat.exists or chrony_service_alt.stat.exists
+  ignore_errors: yes
+
+- name: Debug chrony service issue
+  debug:
+    msg: "Chrony service not found. Service files checked: /lib/systemd/system/chrony.service and /etc/systemd/system/chrony.service"
+  when: not (chrony_service_file.stat.exists or chrony_service_alt.stat.exists)
