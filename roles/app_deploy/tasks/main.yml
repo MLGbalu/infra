@@ -105,6 +105,7 @@
   loop:
     - routes/route.php
     - routes/verify.php
+  when: not ansible_check_mode
 
 - name: Create application health check script
   template:
