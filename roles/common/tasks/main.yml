@@ -152,7 +152,7 @@
 - name: Debug fail2ban startup issue
   debug:
     msg: "Fail2ban service found but failed to start. Status: {{ fail2ban_status.stdout_lines | default(['No output']) | join(' ') }}"
-  when: fail2ban_status is defined and fail2ban_status.rc != 0
+  when: fail2ban_status is defined and fail2ban_status.rc is defined and fail2ban_status.rc != 0
 
 - name: Set timezone
   timezone:
