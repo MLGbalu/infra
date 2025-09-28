@@ -100,7 +100,9 @@
     src: /etc/nginx/sites-available/{{ domain }}
     dest: /etc/nginx/sites-enabled/{{ domain }}
     state: link
+    force: yes
   notify: restart nginx
+  ignore_errors: yes
 
 - name: Remove default Nginx site
   file:
