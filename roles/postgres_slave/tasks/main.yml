@@ -1,4 +1,19 @@
 ---
+- name: Add PostgreSQL official APT repository
+  apt_repository:
+    repo: "deb http://apt.postgresql.org/pub/repos/apt/ {{ ansible_distribution_release }}-pgdg main"
+    state: present
+    filename: pgdg
+
+- name: Add PostgreSQL signing key
+  apt_key:
+    url: https://www.postgresql.org/media/keys/ACCC4CF8.asc
+    state: present
+
+- name: Update apt cache after adding PostgreSQL repo
+  apt:
+    update_cache: yes
+
 - name: Install PostgreSQL packages
   apt:
     name:
