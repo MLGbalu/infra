@@ -146,8 +146,13 @@
 
 - name: Debug fail2ban service issue
   debug:
-    msg: "Fail2ban service not found or failed to start. Status: {{ fail2ban_status.stdout if fail2ban_status is defined else 'Service file not found' }}"
-  when: not (fail2ban_service_file.stat.exists or fail2ban_service_alt.stat.exists) or (fail2ban_status is defined and fail2ban_status.rc != 0)
+    msg: "Fail2ban service not found. Service files checked: /lib/systemd/system/fail2ban.service and /etc/systemd/system/fail2ban.service"
+  when: not (fail2ban_service_file.stat.exists or fail2ban_service_alt.stat.exists)
+
+- name: Debug fail2ban startup issue
+  debug:
+    msg: "Fail2ban service found but failed to start. Status: {{ fail2ban_status.stdout_lines | default(['No output']) | join(' ') }}"
+  when: fail2ban_status is defined and fail2ban_status.rc != 0
 
 - name: Set timezone
   timezone:
