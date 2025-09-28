@@ -78,6 +78,13 @@
   apt:
     name: fail2ban
     state: present
+    update_cache: yes
+
+- name: Ensure fail2ban service directory exists
+  file:
+    path: /etc/systemd/system/fail2ban.service.d
+    state: directory
+    mode: '0755'
 
 - name: Configure fail2ban for SSH
   copy:
@@ -120,6 +127,7 @@
     name: fail2ban
     state: started
     enabled: yes
+    daemon_reload: yes
 
 - name: Set timezone
   timezone:

@@ -8,13 +8,13 @@
       - common
 
 - name: Setup PostgreSQL Master
-  hosts: postgres_master
+  hosts: db_master
   become: true
   roles:
       - postgres_master
 
 - name: Setup PostgreSQL Slave
-  hosts: postgres_slaves
+  hosts: db_slaves
   become: true
   roles:
       - postgres_slave
@@ -32,13 +32,13 @@
       - nginx_php
 
 - name: Deploy Application
-  hosts: website
+  hosts: web_servers
   become: true
   roles:
       - app_deploy
 
 - name: Setup MaxMind GeoIP
-  hosts: website
+  hosts: web_servers
   become: true
   roles:
       - maxmind
