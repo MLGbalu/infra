@@ -4,3 +4,4 @@
     name: fail2ban
     state: restarted
   ignore_errors: yes
+  when: fail2ban_service_exists | default(false)
