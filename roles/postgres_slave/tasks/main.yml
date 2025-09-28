@@ -14,10 +14,30 @@
   register: pg_version
   changed_when: false
 
-- name: Stop PostgreSQL service
+- name: Check if postgresql service exists
+  stat:
+    path: /lib/systemd/system/postgresql.service
+  register: postgresql_service
+
+- name: Check if postgresql@version service exists
+  shell: "systemctl list-unit-files | grep postgresql@ | head -1 | awk '{print $1}'"
+  register: postgresql_versioned_service
+  changed_when: false
+  ignore_errors: yes
+
+- name: Stop PostgreSQL service (standard)
   systemd:
     name: postgresql
     state: stopped
+  when: postgresql_service.stat.exists
+  ignore_errors: yes
+
+- name: Stop PostgreSQL service (versioned)
+  systemd:
+    name: "{{ postgresql_versioned_service.stdout }}"
+    state: stopped
+  when: postgresql_versioned_service.stdout != "" and not postgresql_service.stat.exists
+  ignore_errors: yes
 
 - name: Remove existing data directory
   file:
@@ -58,11 +78,26 @@
     - { regexp: '^#?primary_conninfo', line: "primary_conninfo = 'host=192.168.0.207 port=5432 user={{ vault_db_replication_user }} password={{ vault_db_replication_password }}'" }
     - { regexp: '^#?promote_trigger_file', line: "promote_trigger_file = '/tmp/postgresql.trigger'" }
 
-- name: Start and enable PostgreSQL
+- name: Start and enable PostgreSQL (standard service)
   systemd:
     name: postgresql
     state: started
     enabled: yes
+  when: postgresql_service.stat.exists
+  ignore_errors: yes
+
+- name: Start and enable PostgreSQL (versioned service)
+  systemd:
+    name: "{{ postgresql_versioned_service.stdout }}"
+    state: started
+    enabled: yes
+  when: postgresql_versioned_service.stdout != "" and not postgresql_service.stat.exists
+  ignore_errors: yes
+
+- name: Debug PostgreSQL service issue
+  debug:
+    msg: "PostgreSQL service not found. Checked: postgresql and versioned services"
+  when: not postgresql_service.stat.exists and postgresql_versioned_service.stdout == ""
 
 - name: Wait for PostgreSQL to start
   wait_for:
