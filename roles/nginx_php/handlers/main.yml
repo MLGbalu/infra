@@ -3,8 +3,12 @@
   systemd:
     name: nginx
     state: restarted
+  ignore_errors: yes
+  when: nginx_service_exists | default(false)
 
 - name: restart php-fpm
   systemd:
-    name: php{{ php_version }}-fpm
+    name: php{{ actual_php_version }}-fpm
     state: restarted
+  ignore_errors: yes
+  when: php_fpm_service_exists | default(false)
