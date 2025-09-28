@@ -1,0 +1,44 @@
+---
+- name: Deploy advertising campaign infrastructure
+  hosts: all
+  become: yes
+  gather_facts: yes
+  
+  roles:
+    - common
+
+- name: Setup PostgreSQL Master
+  hosts: postgres_master
+  become: yes
+  roles:
+    - postgres_master
+
+- name: Setup PostgreSQL Slave
+  hosts: postgres_slaves
+  become: yes
+  roles:
+    - postgres_slave
+
+- name: Setup Redis
+  hosts: redis
+  become: yes
+  roles:
+    - redis
+
+- name: Setup Nginx and PHP-FPM
+  hosts: nginx
+  become: yes
+  roles:
+    - nginx_php
+
+- name: Deploy Application
+  hosts: website
+  become: yes
+  roles:
+    - app_deploy
+
+- name: Setup MaxMind GeoIP
+  hosts: website
+  become: yes
+  roles:
+    - maxmind

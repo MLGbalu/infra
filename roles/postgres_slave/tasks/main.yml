@@ -1,0 +1,76 @@
+---
+- name: Install PostgreSQL packages
+  apt:
+    name:
+      - postgresql-14
+      - postgresql-client-14
+      - postgresql-contrib-14
+      - python3-psycopg2
+    state: present
+
+- name: Stop PostgreSQL service
+  systemd:
+    name: postgresql
+    state: stopped
+
+- name: Remove existing data directory
+  file:
+    path: /var/lib/postgresql/14/main
+    state: absent
+
+- name: Create empty data directory
+  file:
+    path: /var/lib/postgresql/14/main
+    state: directory
+    owner: postgres
+    group: postgres
+    mode: '0700'
+
+- name: Perform base backup from master
+  shell: |
+    PGPASSWORD="{{ vault_db_replication_password }}" pg_basebackup -h 192.168.0.207 -D /var/lib/postgresql/14/main -U {{ vault_db_replication_user }} -v -P -W
+  become_user: postgres
+  environment:
+    PGPASSWORD: "{{ vault_db_replication_password }}"
+
+- name: Create standby.signal file
+  file:
+    path: /var/lib/postgresql/14/main/standby.signal
+    state: touch
+    owner: postgres
+    group: postgres
+
+- name: Configure PostgreSQL for standby
+  lineinfile:
+    path: /etc/postgresql/14/main/postgresql.conf
+    regexp: "{{ item.regexp }}"
+    line: "{{ item.line }}"
+    backup: yes
+  loop:
+    - { regexp: '^#?listen_addresses', line: "listen_addresses = '*'" }
+    - { regexp: '^#?hot_standby', line: "hot_standby = on" }
+    - { regexp: '^#?primary_conninfo', line: "primary_conninfo = 'host=192.168.0.207 port=5432 user={{ vault_db_replication_user }} password={{ vault_db_replication_password }}'" }
+    - { regexp: '^#?promote_trigger_file', line: "promote_trigger_file = '/tmp/postgresql.trigger'" }
+
+- name: Start and enable PostgreSQL
+  systemd:
+    name: postgresql
+    state: started
+    enabled: yes
+
+- name: Wait for PostgreSQL to start
+  wait_for:
+    port: 5432
+    host: localhost
+    timeout: 30
+
+- name: Verify replication status
+  postgresql_query:
+    db: postgres
+    query: "SELECT pg_is_in_recovery();"
+  register: replication_status
+  become_user: postgres
+
+- name: Display replication status
+  debug:
+    msg: "Slave is in recovery mode: {{ replication_status.query_result[0][0] }}"

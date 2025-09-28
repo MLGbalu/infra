@@ -1,0 +1,111 @@
+---
+- name: Add PHP repository
+  apt_repository:
+    repo: ppa:ondrej/php
+    state: present
+
+- name: Update apt cache after adding PHP repo
+  apt:
+    update_cache: yes
+
+- name: Install Nginx
+  apt:
+    name: nginx
+    state: present
+
+- name: Install PHP and extensions
+  apt:
+    name:
+      - php{{ php_version }}-fpm
+      - php{{ php_version }}-cli
+      - php{{ php_version }}-curl
+      - php{{ php_version }}-mbstring
+      - php{{ php_version }}-json
+      - php{{ php_version }}-pgsql
+      - php{{ php_version }}-redis
+      - php{{ php_version }}-gd
+      - php{{ php_version }}-xml
+      - php{{ php_version }}-zip
+      - php{{ php_version }}-bcmath
+    state: present
+
+- name: Create application directory
+  file:
+    path: "{{ app_dir }}"
+    state: directory
+    owner: "{{ app_user }}"
+    group: "{{ app_group }}"
+    mode: '0755'
+
+- name: Create application subdirectories
+  file:
+    path: "{{ app_dir }}/{{ item }}"
+    state: directory
+    owner: "{{ app_user }}"
+    group: "{{ app_group }}"
+    mode: '0755'
+  loop:
+    - public
+    - routes
+    - lib
+    - config
+    - logs
+
+- name: Configure PHP-FPM pool
+  template:
+    src: php-fpm-pool.conf.j2
+    dest: /etc/php/{{ php_version }}/fpm/pool.d/{{ domain }}.conf
+    backup: yes
+  notify: restart php-fpm
+
+- name: Remove default PHP-FPM pool
+  file:
+    path: /etc/php/{{ php_version }}/fpm/pool.d/www.conf
+    state: absent
+  notify: restart php-fpm
+
+- name: Configure Nginx virtual host
+  template:
+    src: nginx_vhost.j2
+    dest: /etc/nginx/sites-available/{{ domain }}
+    backup: yes
+  notify: restart nginx
+
+- name: Enable Nginx site
+  file:
+    src: /etc/nginx/sites-available/{{ domain }}
+    dest: /etc/nginx/sites-enabled/{{ domain }}
+    state: link
+  notify: restart nginx
+
+- name: Remove default Nginx site
+  file:
+    path: /etc/nginx/sites-enabled/default
+    state: absent
+  notify: restart nginx
+
+- name: Configure logrotate for application logs
+  copy:
+    content: |
+      {{ app_dir }}/logs/*.log {
+          daily
+          missingok
+          rotate 14
+          compress
+          delaycompress
+          notifempty
+          create 640 {{ app_user }} {{ app_group }}
+          postrotate
+              systemctl reload nginx > /dev/null 2>&1 || true
+          endscript
+      }
+    dest: /etc/logrotate.d/{{ domain }}
+
+- name: Start and enable services
+  systemd:
+    name: "{{ item }}"
+    state: started
+    enabled: yes
+  loop:
+    - nginx
+    - php{{ php_version }}-fpm

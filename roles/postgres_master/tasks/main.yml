@@ -1,0 +1,110 @@
+---
+- name: Install PostgreSQL packages
+  apt:
+    name:
+      - postgresql-14
+      - postgresql-client-14
+      - postgresql-contrib-14
+      - python3-psycopg2
+    state: present
+
+- name: Start and enable PostgreSQL
+  systemd:
+    name: postgresql
+    state: started
+    enabled: yes
+
+- name: Set PostgreSQL password for postgres user
+  postgresql_user:
+    name: postgres
+    password: "{{ vault_postgres_password }}"
+  become_user: postgres
+
+- name: Create application database
+  postgresql_db:
+    name: "{{ db_name }}"
+    owner: postgres
+  become_user: postgres
+
+- name: Create application user
+  postgresql_user:
+    name: "{{ db_user }}"
+    password: "{{ db_password }}"
+    db: "{{ db_name }}"
+    priv: ALL
+  become_user: postgres
+
+- name: Create replication user
+  postgresql_user:
+    name: "{{ vault_db_replication_user }}"
+    password: "{{ vault_db_replication_password }}"
+    role_attr_flags: REPLICATION
+  become_user: postgres
+
+- name: Configure PostgreSQL for replication
+  lineinfile:
+    path: /etc/postgresql/14/main/postgresql.conf
+    regexp: "{{ item.regexp }}"
+    line: "{{ item.line }}"
+    backup: yes
+  loop:
+    - { regexp: '^#?listen_addresses', line: "listen_addresses = '*'" }
+    - { regexp: '^#?wal_level', line: "wal_level = replica" }
+    - { regexp: '^#?max_wal_senders', line: "max_wal_senders = 3" }
+    - { regexp: '^#?wal_keep_size', line: "wal_keep_size = 64MB" }
+    - { regexp: '^#?hot_standby', line: "hot_standby = on" }
+  notify: restart postgresql
+
+- name: Configure pg_hba.conf for replication
+  blockinfile:
+    path: /etc/postgresql/14/main/pg_hba.conf
+    block: |
+      # Replication connections
+      host replication {{ vault_db_replication_user }} 192.168.0.208/32 md5
+      # Application connections
+      host {{ db_name }} {{ db_user }} 192.168.0.209/32 md5
+      host {{ db_name }} {{ db_user }} 127.0.0.1/32 md5
+    backup: yes
+  notify: restart postgresql
+
+- name: Create clicks table
+  postgresql_query:
+    db: "{{ db_name }}"
+    query: |
+      CREATE TABLE IF NOT EXISTS clicks (
+        id SERIAL PRIMARY KEY,
+        timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        ip_address INET NOT NULL,
+        user_agent TEXT,
+        gclid VARCHAR(255),
+        clickid VARCHAR(255),
+        utm_source VARCHAR(255),
+        utm_medium VARCHAR(255),
+        utm_campaign VARCHAR(255),
+        utm_term VARCHAR(255),
+        utm_content VARCHAR(255),
+        country VARCHAR(2),
+        asn INTEGER,
+        ipqs_score INTEGER,
+        decision VARCHAR(20) NOT NULL,
+        redirect_url TEXT,
+        processing_time_ms INTEGER
+      );
+      CREATE INDEX IF NOT EXISTS idx_clicks_timestamp ON clicks(timestamp);
+      CREATE INDEX IF NOT EXISTS idx_clicks_ip ON clicks(ip_address);
+      CREATE INDEX IF NOT EXISTS idx_clicks_decision ON clicks(decision);
+  become_user: postgres
+
+- name: Setup backup script
+  template:
+    src: backup_script.sh.j2
+    dest: /usr/local/bin/backup_postgres.sh
+    mode: '0755'
+
+- name: Setup backup cron job
+  cron:
+    name: "PostgreSQL backup"
+    minute: "0"
+    hour: "2"
+    job: "/usr/local/bin/backup_postgres.sh"
+    user: postgres

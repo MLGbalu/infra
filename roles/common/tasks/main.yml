@@ -1,0 +1,137 @@
+---
+- name: Update apt cache
+  apt:
+    update_cache: yes
+    cache_valid_time: 3600
+
+- name: Upgrade all packages
+  apt:
+    upgrade: dist
+    autoremove: yes
+
+- name: Install base packages
+  apt:
+    name:
+      - git
+      - curl
+      - unzip
+      - software-properties-common
+      - htop
+      - vim
+      - wget
+      - gnupg2
+      - ca-certificates
+      - lsb-release
+    state: present
+
+- name: Create app user
+  user:
+    name: "{{ app_user }}"
+    groups: "{{ app_group }}"
+    shell: /bin/bash
+    create_home: yes
+    system: no
+
+- name: Install UFW
+  apt:
+    name: ufw
+    state: present
+
+- name: Reset UFW to defaults
+  ufw:
+    state: reset
+
+- name: Configure UFW defaults
+  ufw:
+    direction: "{{ item.direction }}"
+    policy: "{{ item.policy }}"
+  loop:
+    - { direction: 'incoming', policy: 'deny' }
+    - { direction: 'outgoing', policy: 'allow' }
+
+- name: Allow SSH
+  ufw:
+    rule: allow
+    port: '22'
+    proto: tcp
+
+- name: Allow HTTP
+  ufw:
+    rule: allow
+    port: '80'
+    proto: tcp
+
+- name: Allow PostgreSQL between database servers
+  ufw:
+    rule: allow
+    port: '5432'
+    proto: tcp
+    src: "{{ hostvars[item]['ansible_default_ipv4']['address'] }}"
+  loop: "{{ groups['postgres'] }}"
+  when: inventory_hostname in groups['postgres']
+
+- name: Enable UFW
+  ufw:
+    state: enabled
+
+- name: Install fail2ban
+  apt:
+    name: fail2ban
+    state: present
+
+- name: Configure fail2ban for SSH
+  copy:
+    content: |
+      [sshd]
+      enabled = true
+      port = ssh
+      filter = sshd
+      logpath = /var/log/auth.log
+      maxretry = 3
+      bantime = 3600
+      findtime = 600
+    dest: /etc/fail2ban/jail.d/sshd.conf
+  notify: restart fail2ban
+
+- name: Configure fail2ban for nginx
+  copy:
+    content: |
+      [nginx-http-auth]
+      enabled = true
+      filter = nginx-http-auth
+      port = http,https
+      logpath = /var/log/nginx/error.log
+      maxretry = 5
+      bantime = 3600
+      
+      [nginx-limit-req]
+      enabled = true
+      filter = nginx-limit-req
+      port = http,https
+      logpath = /var/log/nginx/error.log
+      maxretry = 10
+      bantime = 600
+    dest: /etc/fail2ban/jail.d/nginx.conf
+  notify: restart fail2ban
+  when: inventory_hostname in groups['nginx']
+
+- name: Start and enable fail2ban
+  systemd:
+    name: fail2ban
+    state: started
+    enabled: yes
+
+- name: Set timezone
+  timezone:
+    name: UTC
+
+- name: Install and configure chrony
+  apt:
+    name: chrony
+    state: present
+
+- name: Start and enable chrony
+  systemd:
+    name: chrony
+    state: started
+    enabled: yes

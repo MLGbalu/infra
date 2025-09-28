@@ -1,0 +1,68 @@
+---
+- name: Create GeoIP directory
+  file:
+    path: /usr/share/geoip
+    state: directory
+    mode: '0755'
+
+- name: Install MaxMind GeoIP update tool
+  get_url:
+    url: https://github.com/maxmind/geoipupdate/releases/download/v4.11.0/geoipupdate_4.11.0_linux_amd64.deb
+    dest: /tmp/geoipupdate.deb
+    mode: '0644'
+  when: maxmind_license_key != ""
+
+- name: Install GeoIP update package
+  apt:
+    deb: /tmp/geoipupdate.deb
+    state: present
+  when: maxmind_license_key != ""
+
+- name: Configure GeoIP update
+  template:
+    src: GeoIP.conf.j2
+    dest: /etc/GeoIP.conf
+    mode: '0644'
+  when: maxmind_license_key != ""
+
+- name: Download initial GeoIP databases
+  command: geoipupdate
+  when: maxmind_license_key != ""
+  ignore_errors: yes
+
+- name: Setup GeoIP database update cron job
+  cron:
+    name: "Update GeoIP databases"
+    minute: "0"
+    hour: "2"
+    weekday: "3"
+    job: "/usr/bin/geoipupdate"
+    user: root
+  when: maxmind_license_key != ""
+
+- name: Create stub GeoIP databases when license key is not available
+  copy:
+    content: |
+      # Stub GeoIP database file
+      # MaxMind license key not configured
+      # Application will use fallback geo detection
+    dest: "/usr/share/geoip/{{ item }}"
+    mode: '0644'
+  loop:
+    - GeoLite2-City.mmdb.stub
+    - GeoLite2-ASN.mmdb.stub
+  when: maxmind_license_key == ""
+
+- name: Display MaxMind configuration status
+  debug:
+    msg: |
+      MaxMind GeoIP Status:
+      {% if maxmind_license_key != "" %}
+      - License key configured: Yes
+      - Databases will be downloaded and updated automatically
+      - Location: /usr/share/geoip/
+      {% else %}
+      - License key configured: No
+      - Using stub databases (fallback mode)
+      - Application will use basic IP detection
+      {% endif %}

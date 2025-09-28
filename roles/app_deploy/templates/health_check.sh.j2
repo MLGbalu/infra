@@ -1,0 +1,52 @@
+#!/bin/bash
+# Application health check script
+
+DOMAIN="{{ domain }}"
+LOG_FILE="/var/log/app_health_check.log"
+
+# Function to log messages
+log_message() {
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" >> $LOG_FILE
+}
+
+# Check if nginx is running
+if ! systemctl is-active --quiet nginx; then
+    log_message "ERROR: Nginx is not running"
+    systemctl restart nginx
+fi
+
+# Check if PHP-FPM is running
+if ! systemctl is-active --quiet php{{ php_version }}-fpm; then
+    log_message "ERROR: PHP-FPM is not running"
+    systemctl restart php{{ php_version }}-fpm
+fi
+
+# Check if Redis is running
+if ! systemctl is-active --quiet redis-server; then
+    log_message "ERROR: Redis is not running"
+    systemctl restart redis-server
+fi
+
+# Check web application response
+HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost/)
+if [ "$HTTP_CODE" != "200" ]; then
+    log_message "ERROR: Web application not responding correctly (HTTP $HTTP_CODE)"
+fi
+
+# Check route endpoint
+HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -A "curl/7.68" http://localhost/route)
+if [ "$HTTP_CODE" != "302" ]; then
+    log_message "ERROR: Route endpoint not responding correctly (HTTP $HTTP_CODE)"
+fi
+
+# Check disk space
+DISK_USAGE=$(df {{ app_dir }} | tail -1 | awk '{print $5}' | sed 's/%//')
+if [ "$DISK_USAGE" -gt 80 ]; then
+    log_message "WARNING: Disk usage is ${DISK_USAGE}%"
+fi
+
+# Check log file sizes
+LOG_SIZE=$(du -m {{ app_dir }}/logs/decisions.log 2>/dev/null | cut -f1)
+if [ "$LOG_SIZE" -gt 100 ]; then
+    log_message "WARNING: Decision log file is ${LOG_SIZE}MB"
+fi

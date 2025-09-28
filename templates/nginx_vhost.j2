@@ -1,0 +1,62 @@
+server {
+    listen 80;
+    server_name {{ domain }};
+    root {{ app_dir }}/public;
+    index index.html index.php;
+
+    # Security headers
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "no-referrer-when-downgrade" always;
+
+    # Rate limiting
+    limit_req_zone $binary_remote_addr zone=route_limit:10m rate=10r/m;
+    limit_req_zone $binary_remote_addr zone=verify_limit:10m rate=30r/m;
+
+    # Logging
+    access_log /var/log/nginx/{{ domain }}_access.log;
+    error_log /var/log/nginx/{{ domain }}_error.log;
+
+    # Main route endpoint
+    location /route {
+        limit_req zone=route_limit burst=5 nodelay;
+        try_files $uri /routes/route.php$is_args$args;
+    }
+
+    # Verify endpoint
+    location /verify {
+        limit_req zone=verify_limit burst=10 nodelay;
+        try_files $uri /routes/verify.php$is_args$args;
+    }
+
+    # Static files
+    location / {
+        try_files $uri $uri/ =404;
+    }
+
+    # PHP processing
+    location ~ \.php$ {
+        include snippets/fastcgi-php.conf;
+        fastcgi_pass unix:/var/run/php/php{{ php_version }}-fpm-{{ domain }}.sock;
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        include fastcgi_params;
+        
+        # Security
+        fastcgi_hide_header X-Powered-By;
+        fastcgi_param HTTP_PROXY "";
+    }
+
+    # Deny access to sensitive files
+    location ~ /\. {
+        deny all;
+    }
+
+    location ~ /(config|lib|logs)/ {
+        deny all;
+    }
+
+    location ~ \.(log|env)$ {
+        deny all;
+    }
+}

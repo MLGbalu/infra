@@ -1,0 +1,22 @@
+# GeoIP.conf file for geoipupdate
+# Configuration for MaxMind GeoIP database updates
+
+# Account ID and license key from MaxMind
+AccountID {{ vault_maxmind_account_id | default('000000') }}
+LicenseKey {{ vault_maxmind_license_key }}
+
+# Product IDs for the databases to download
+EditionIDs GeoLite2-City GeoLite2-ASN
+
+# Directory to store the database files
+DatabaseDirectory /usr/share/geoip
+
+# Host to connect to (usually don't change this)
+Host updates.maxmind.com
+
+# Proxy settings (uncomment and configure if needed)
+# Proxy http://proxy.example.com:8080
+# ProxyUserPassword username:password
+
+# Lock file location
+LockFile /var/lock/geoipupdate.lock

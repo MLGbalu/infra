@@ -1,0 +1,45 @@
+---
+- name: Install Redis
+  apt:
+    name:
+      - redis-server
+      - python3-redis
+    state: present
+
+- name: Configure Redis
+  lineinfile:
+    path: /etc/redis/redis.conf
+    regexp: "{{ item.regexp }}"
+    line: "{{ item.line }}"
+    backup: yes
+  loop:
+    - { regexp: '^bind', line: 'bind 127.0.0.1' }
+    - { regexp: '^# maxmemory <bytes>', line: 'maxmemory 256mb' }
+    - { regexp: '^# maxmemory-policy', line: 'maxmemory-policy allkeys-lru' }
+    - { regexp: '^save', line: 'save 900 1' }
+    - { regexp: '^appendonly', line: 'appendonly yes' }
+  notify: restart redis
+
+- name: Set Redis password if defined
+  lineinfile:
+    path: /etc/redis/redis.conf
+    regexp: '^# requirepass'
+    line: 'requirepass {{ redis_password }}'
+    backup: yes
+  when: redis_password != ""
+  notify: restart redis
+
+- name: Start and enable Redis
+  systemd:
+    name: redis-server
+    state: started
+    enabled: yes
+
+- name: Test Redis connection
+  command: redis-cli ping
+  register: redis_test
+  changed_when: false
+
+- name: Display Redis test result
+  debug:
+    msg: "Redis response: {{ redis_test.stdout }}"

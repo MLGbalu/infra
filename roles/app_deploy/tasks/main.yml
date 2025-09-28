@@ -1,0 +1,119 @@
+---
+- name: Create application directory structure
+  file:
+    path: "{{ app_dir }}/{{ item }}"
+    state: directory
+    owner: "{{ app_user }}"
+    group: "{{ app_group }}"
+    mode: '0755'
+  loop:
+    - public
+    - routes
+    - lib
+    - config
+    - logs
+
+- name: Copy PHP application files
+  copy:
+    src: "{{ playbook_dir }}/app/{{ item.src }}"
+    dest: "{{ app_dir }}/{{ item.dest }}"
+    owner: "{{ app_user }}"
+    group: "{{ app_group }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - { src: 'lib/', dest: 'lib/', mode: '0644' }
+    - { src: 'routes/', dest: 'routes/', mode: '0644' }
+    - { src: 'public/', dest: 'public/', mode: '0644' }
+
+- name: Generate application configuration from template
+  template:
+    src: env.j2
+    dest: "{{ app_dir }}/config/.env.php"
+    owner: "{{ app_user }}"
+    group: "{{ app_group }}"
+    mode: '0640'
+
+- name: Generate scoring rules from template
+  template:
+    src: scoring_rules.json.j2
+    dest: "{{ app_dir }}/config/scoring_rules.json"
+    owner: "{{ app_user }}"
+    group: "{{ app_group }}"
+    mode: '0644'
+
+- name: Create logs directory with proper permissions
+  file:
+    path: "{{ app_dir }}/logs"
+    state: directory
+    owner: "{{ app_user }}"
+    group: "{{ app_group }}"
+    mode: '0755'
+
+- name: Create empty log files
+  file:
+    path: "{{ app_dir }}/logs/{{ item }}"
+    state: touch
+    owner: "{{ app_user }}"
+    group: "{{ app_group }}"
+    mode: '0644'
+  loop:
+    - decisions.log
+    - php_errors.log
+
+- name: Install Composer
+  get_url:
+    url: https://getcomposer.org/installer
+    dest: /tmp/composer-setup.php
+    mode: '0755'
+
+- name: Run Composer installer
+  command: php /tmp/composer-setup.php --install-dir=/usr/local/bin --filename=composer
+  args:
+    creates: /usr/local/bin/composer
+
+- name: Create composer.json for MaxMind dependencies
+  copy:
+    content: |
+      {
+          "require": {
+              "geoip2/geoip2": "~2.0"
+          }
+      }
+    dest: "{{ app_dir }}/composer.json"
+    owner: "{{ app_user }}"
+    group: "{{ app_group }}"
+    mode: '0644'
+
+- name: Install PHP dependencies via Composer
+  composer:
+    command: install
+    working_dir: "{{ app_dir }}"
+  become_user: "{{ app_user }}"
+
+- name: Set proper file permissions recursively
+  file:
+    path: "{{ app_dir }}"
+    owner: "{{ app_user }}"
+    group: "{{ app_group }}"
+    recurse: yes
+
+- name: Set executable permissions for PHP files
+  file:
+    path: "{{ app_dir }}/{{ item }}"
+    mode: '0644'
+  loop:
+    - routes/route.php
+    - routes/verify.php
+
+- name: Create application health check script
+  template:
+    src: health_check.sh.j2
+    dest: /usr/local/bin/app_health_check.sh
+    mode: '0755'
+
+- name: Setup health check cron job
+  cron:
+    name: "Application health check"
+    minute: "*/5"
+    job: "/usr/local/bin/app_health_check.sh"
+    user: root

@@ -1,0 +1,56 @@
+{
+  "country_blocklist": {
+    "RU": 30,
+    "CN": 50,
+    "NG": 40,
+    "PK": 35,
+    "BD": 30,
+    "VN": 25,
+    "ID": 20,
+    "IN": 15
+  },
+  "ipqs_vpn_weight": 50,
+  "ipqs_proxy_weight": 40,
+  "ipqs_tor_weight": 70,
+  "ipqs_bot_weight": 80,
+  "ipqs_abuse_weight": 45,
+  "ipqs_fraud_multiplier": 0.5,
+  "asn_suspicious": {
+    "AS12345": 20,
+    "AS54321": 25,
+    "AS13335": 10
+  },
+  "ua_bot_patterns": {
+    "bot": 100,
+    "crawler": 100,
+    "spider": 100,
+    "curl": 90,
+    "wget": 90,
+    "python": 80,
+    "java": 70,
+    "go-http": 75,
+    "ruby": 70,
+    "headless": 85
+  },
+  "time_based_scoring": {
+    "enabled": true,
+    "suspicious_hours": [2, 3, 4, 5],
+    "weight": 10
+  },
+  "rate_limit_penalty": 50,
+  "challenge_bonus": 20,
+  "challenge_rules": {
+    "webdriver_penalty": 30,
+    "bot_screen_sizes": ["1024x768", "800x600", "1280x1024", "1366x768"],
+    "bot_screen_penalty": 20,
+    "no_mouse_penalty": 25,
+    "touch_mismatch_penalty": 15,
+    "timezone_penalty": 10,
+    "no_cookies_penalty": 15
+  },
+  "expected_timezones": [-480, -420, -360, -300, -240, -180, -120, 0, 60, 120, 180, 240, 300, 360, 420, 480, 540, 600, 660, 720],
+  "decision_thresholds": {
+    "deny": {{ scoring_deny_threshold | default(80) }},
+    "challenge": {{ scoring_challenge_threshold | default(40) }}
+  }
+}

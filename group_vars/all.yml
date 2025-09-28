@@ -1,0 +1,41 @@
+---
+# Common variables for all hosts
+domain: "domain.com"
+app_user: "app_user"
+app_group: "www-data"
+app_dir: "/var/www/{{ domain }}"
+
+# Database configuration
+db_name: "clicks_db"
+db_user: "{{ vault_db_user }}"
+db_password: "{{ vault_db_password }}"
+db_host: "192.168.0.207"
+db_port: 5432
+
+# Redis configuration
+redis_host: "127.0.0.1"
+redis_port: 6379
+redis_password: "{{ vault_redis_password | default('') }}"
+
+# Application configuration
+rate_limit_per_min: 60
+hmac_secret: "{{ vault_hmac_secret }}"
+keitaro_url: "{{ vault_keitaro_url }}"
+
+# External API keys
+ipqs_api_key: "{{ vault_ipqs_api_key | default('') }}"
+maxmind_license_key: "{{ vault_maxmind_license_key | default('') }}"
+
+# Security settings
+ufw_allowed_ports:
+  - 22
+  - 80
+
+# PHP configuration
+php_version: "8.1"
+php_fpm_pool_user: "{{ app_user }}"
+php_fpm_pool_group: "{{ app_group }}"
+
+# Nginx configuration
+nginx_worker_processes: auto
+nginx_worker_connections: 1024
