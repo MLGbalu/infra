@@ -1,27 +1,18 @@
 ---
-- name: Add PostgreSQL official APT repository
-  apt_repository:
-    repo: "deb http://apt.postgresql.org/pub/repos/apt/ {{ ansible_distribution_release }}-pgdg main"
-    state: present
-    filename: pgdg
-
-- name: Add PostgreSQL signing key
-  apt_key:
-    url: https://www.postgresql.org/media/keys/ACCC4CF8.asc
-    state: present
-
-- name: Update apt cache after adding PostgreSQL repo
-  apt:
-    update_cache: yes
-
-- name: Install PostgreSQL packages
+- name: Install PostgreSQL packages (default version)
   apt:
     name:
-      - postgresql-14
-      - postgresql-client-14
-      - postgresql-contrib-14
+      - postgresql
+      - postgresql-client
+      - postgresql-contrib
       - python3-psycopg2
     state: present
+    update_cache: yes
+
+- name: Get PostgreSQL version
+  shell: "ls /etc/postgresql/ | head -1"
+  register: pg_version
+  changed_when: false
 
 - name: Start and enable PostgreSQL
   systemd:
@@ -58,7 +49,7 @@
 
 - name: Configure PostgreSQL for replication
   lineinfile:
-    path: /etc/postgresql/14/main/postgresql.conf
+    path: "/etc/postgresql/{{ pg_version.stdout }}/main/postgresql.conf"
     regexp: "{{ item.regexp }}"
     line: "{{ item.line }}"
     backup: yes
@@ -72,7 +63,7 @@
 
 - name: Configure pg_hba.conf for replication
   blockinfile:
-    path: /etc/postgresql/14/main/pg_hba.conf
+    path: "/etc/postgresql/{{ pg_version.stdout }}/main/pg_hba.conf"
     block: |
       # Replication connections
       host replication {{ vault_db_replication_user }} 192.168.0.208/32 md5

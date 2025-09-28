@@ -1,27 +1,18 @@
 ---
-- name: Add PostgreSQL official APT repository
-  apt_repository:
-    repo: "deb http://apt.postgresql.org/pub/repos/apt/ {{ ansible_distribution_release }}-pgdg main"
-    state: present
-    filename: pgdg
-
-- name: Add PostgreSQL signing key
-  apt_key:
-    url: https://www.postgresql.org/media/keys/ACCC4CF8.asc
-    state: present
-
-- name: Update apt cache after adding PostgreSQL repo
-  apt:
-    update_cache: yes
-
-- name: Install PostgreSQL packages
+- name: Install PostgreSQL packages (default version)
   apt:
     name:
-      - postgresql-14
-      - postgresql-client-14
-      - postgresql-contrib-14
+      - postgresql
+      - postgresql-client
+      - postgresql-contrib
       - python3-psycopg2
     state: present
+    update_cache: yes
+
+- name: Get PostgreSQL version
+  shell: "ls /etc/postgresql/ | head -1"
+  register: pg_version
+  changed_when: false
 
 - name: Stop PostgreSQL service
   systemd:
@@ -30,12 +21,12 @@
 
 - name: Remove existing data directory
   file:
-    path: /var/lib/postgresql/14/main
+    path: "/var/lib/postgresql/{{ pg_version.stdout }}/main"
     state: absent
 
 - name: Create empty data directory
   file:
-    path: /var/lib/postgresql/14/main
+    path: "/var/lib/postgresql/{{ pg_version.stdout }}/main"
     state: directory
     owner: postgres
     group: postgres
@@ -43,21 +34,21 @@
 
 - name: Perform base backup from master
   shell: |
-    PGPASSWORD="{{ vault_db_replication_password }}" pg_basebackup -h 192.168.0.207 -D /var/lib/postgresql/14/main -U {{ vault_db_replication_user }} -v -P -W
+    PGPASSWORD="{{ vault_db_replication_password }}" pg_basebackup -h 192.168.0.207 -D /var/lib/postgresql/{{ pg_version.stdout }}/main -U {{ vault_db_replication_user }} -v -P -W
   become_user: postgres
   environment:
     PGPASSWORD: "{{ vault_db_replication_password }}"
 
 - name: Create standby.signal file
   file:
-    path: /var/lib/postgresql/14/main/standby.signal
+    path: "/var/lib/postgresql/{{ pg_version.stdout }}/main/standby.signal"
     state: touch
     owner: postgres
     group: postgres
 
 - name: Configure PostgreSQL for standby
   lineinfile:
-    path: /etc/postgresql/14/main/postgresql.conf
+    path: "/etc/postgresql/{{ pg_version.stdout }}/main/postgresql.conf"
     regexp: "{{ item.regexp }}"
     line: "{{ item.line }}"
     backup: yes
