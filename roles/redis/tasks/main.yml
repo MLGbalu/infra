@@ -14,6 +14,7 @@
     - /etc/redis/redis.conf
     - /etc/redis.conf
     - /etc/redis/6379.conf
+  check_mode: no
 
 - name: Set Redis config path
   set_fact:
@@ -54,40 +55,42 @@
 
 - name: Check if redis-server service exists
   stat:
-    path: /lib/systemd/system/redis-server.service
-  register: redis_service
+    path: "{{ item }}"
+  register: redis_service_checks
+  loop:
+    - /lib/systemd/system/redis-server.service
+    - /usr/lib/systemd/system/redis-server.service
+    - /lib/systemd/system/redis.service
+    - /usr/lib/systemd/system/redis.service
+  check_mode: no
 
-- name: Check if redis service exists (alternative)
-  stat:
-    path: /lib/systemd/system/redis.service
-  register: redis_service_alt
+- name: Set redis service exists fact
+  set_fact:
+    redis_service_exists: "{{ redis_service_checks.results | selectattr('stat.exists') | list | length > 0 }}"
 
-- name: Start and enable Redis (redis-server)
+- name: Set redis service name
+  set_fact:
+    redis_service_name: "{{ (redis_service_checks.results | selectattr('stat.exists') | first).item | basename | regex_replace('\\.service$', '') }}"
+  when: redis_service_exists
+
+- name: Start and enable Redis service
   systemd:
-    name: redis-server
+    name: "{{ redis_service_name }}"
     state: started
     enabled: yes
-  when: redis_service.stat.exists
-  ignore_errors: yes
-
-- name: Start and enable Redis (redis)
-  systemd:
-    name: redis
-    state: started
-    enabled: yes
-  when: redis_service_alt.stat.exists and not redis_service.stat.exists
+  when: redis_service_exists
   ignore_errors: yes
 
 - name: Debug Redis service issue
   debug:
-    msg: "Redis service not found. Checked: redis-server.service and redis.service"
-  when: not redis_service.stat.exists and not redis_service_alt.stat.exists
+    msg: "Redis service not found. Checked: /lib/systemd/system/ and /usr/lib/systemd/system/ for redis-server.service and redis.service"
+  when: not redis_service_exists
 
 - name: Test Redis connection
   command: redis-cli ping
   register: redis_test
   changed_when: false
-  when: redis_service.stat.exists or redis_service_alt.stat.exists
+  when: redis_service_exists
   ignore_errors: yes
 
 - name: Display Redis test result

@@ -88,13 +88,16 @@
 
 - name: Check if fail2ban service exists
   stat:
-    path: /lib/systemd/system/fail2ban.service
-  register: fail2ban_service_file
+    path: "{{ item }}"
+  register: fail2ban_service_checks
+  loop:
+    - /lib/systemd/system/fail2ban.service
+    - /usr/lib/systemd/system/fail2ban.service
+    - /etc/systemd/system/fail2ban.service
 
-- name: Alternative fail2ban service check
-  stat:
-    path: /etc/systemd/system/fail2ban.service
-  register: fail2ban_service_alt
+- name: Set fail2ban service exists fact
+  set_fact:
+    fail2ban_service_exists: "{{ fail2ban_service_checks.results | selectattr('stat.exists') | list | length > 0 }}"
 
 - name: Reload systemd daemon
   systemd:
@@ -135,19 +138,19 @@
     state: started
     enabled: yes
     daemon_reload: yes
-  when: fail2ban_service_file.stat.exists or fail2ban_service_alt.stat.exists
+  when: fail2ban_service_exists
   ignore_errors: yes
 
 - name: Check fail2ban status
   command: systemctl status fail2ban
   register: fail2ban_status
   ignore_errors: yes
-  when: fail2ban_service_file.stat.exists or fail2ban_service_alt.stat.exists
+  when: fail2ban_service_exists
 
 - name: Debug fail2ban service issue
   debug:
-    msg: "Fail2ban service not found. Service files checked: /lib/systemd/system/fail2ban.service and /etc/systemd/system/fail2ban.service"
-  when: not (fail2ban_service_file.stat.exists or fail2ban_service_alt.stat.exists)
+    msg: "Fail2ban service not found. Service files checked: /lib/systemd/system/, /usr/lib/systemd/system/, and /etc/systemd/system/"
+  when: not fail2ban_service_exists
 
 - name: Debug fail2ban startup issue
   debug:
@@ -165,13 +168,16 @@
 
 - name: Check if chrony service exists
   stat:
-    path: /lib/systemd/system/chrony.service
-  register: chrony_service_file
+    path: "{{ item }}"
+  register: chrony_service_checks
+  loop:
+    - /lib/systemd/system/chrony.service
+    - /usr/lib/systemd/system/chrony.service
+    - /etc/systemd/system/chrony.service
 
-- name: Alternative chrony service check
-  stat:
-    path: /etc/systemd/system/chrony.service
-  register: chrony_service_alt
+- name: Set chrony service exists fact
+  set_fact:
+    chrony_service_exists: "{{ chrony_service_checks.results | selectattr('stat.exists') | list | length > 0 }}"
 
 - name: Start and enable chrony (if service exists)
   systemd:
@@ -179,10 +185,10 @@
     state: started
     enabled: yes
     daemon_reload: yes
-  when: chrony_service_file.stat.exists or chrony_service_alt.stat.exists
+  when: chrony_service_exists
   ignore_errors: yes
 
 - name: Debug chrony service issue
   debug:
-    msg: "Chrony service not found. Service files checked: /lib/systemd/system/chrony.service and /etc/systemd/system/chrony.service"
-  when: not (chrony_service_file.stat.exists or chrony_service_alt.stat.exists)
+    msg: "Chrony service not found. Service files checked: /lib/systemd/system/, /usr/lib/systemd/system/, and /etc/systemd/system/"
+  when: not chrony_service_exists

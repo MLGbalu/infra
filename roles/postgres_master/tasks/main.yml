@@ -13,24 +13,34 @@
   shell: "ls /etc/postgresql/ | head -1"
   register: pg_version
   changed_when: false
+  check_mode: no
 
 - name: Check if postgresql service exists
   stat:
-    path: /lib/systemd/system/postgresql.service
-  register: postgresql_service
+    path: "{{ item }}"
+  register: postgresql_service_checks
+  loop:
+    - /lib/systemd/system/postgresql.service
+    - /usr/lib/systemd/system/postgresql.service
+  check_mode: no
 
 - name: Check if postgresql@version service exists
   shell: "systemctl list-unit-files | grep postgresql@ | head -1 | awk '{print $1}'"
   register: postgresql_versioned_service
   changed_when: false
   ignore_errors: yes
+  check_mode: no
+
+- name: Set postgresql service exists fact
+  set_fact:
+    postgresql_service_exists: "{{ postgresql_service_checks.results | selectattr('stat.exists') | list | length > 0 or postgresql_versioned_service.stdout != '' }}"
 
 - name: Start and enable PostgreSQL (standard service)
   systemd:
     name: postgresql
     state: started
     enabled: yes
-  when: postgresql_service.stat.exists
+  when: postgresql_service_checks.results | selectattr('stat.exists') | list | length > 0
   ignore_errors: yes
 
 - name: Start and enable PostgreSQL (versioned service)
@@ -38,27 +48,27 @@
     name: "{{ postgresql_versioned_service.stdout }}"
     state: started
     enabled: yes
-  when: postgresql_versioned_service.stdout != "" and not postgresql_service.stat.exists
+  when: postgresql_versioned_service.stdout != ""
   ignore_errors: yes
 
 - name: Debug PostgreSQL service issue
   debug:
     msg: "PostgreSQL service not found. Checked: postgresql and versioned services"
-  when: not postgresql_service.stat.exists and postgresql_versioned_service.stdout == ""
+  when: not postgresql_service_exists
 
 - name: Set PostgreSQL password for postgres user
   postgresql_user:
     name: postgres
     password: "{{ vault_postgres_password }}"
   become_user: postgres
-  when: postgresql_service.stat.exists or postgresql_versioned_service.stdout != ""
+  when: postgresql_service_exists
 
 - name: Create application database
   postgresql_db:
     name: "{{ db_name }}"
     owner: postgres
   become_user: postgres
-  when: postgresql_service.stat.exists or postgresql_versioned_service.stdout != ""
+  when: postgresql_service_exists
 
 - name: Create application user
   postgresql_user:
@@ -67,15 +77,15 @@
     db: "{{ db_name }}"
     priv: ALL
   become_user: postgres
-  when: postgresql_service.stat.exists or postgresql_versioned_service.stdout != ""
+  when: postgresql_service_exists
 
 - name: Create replication user
   postgresql_user:
-    name: "{{ vault_db_replication_user }}"
-    password: "{{ vault_db_replication_password }}"
+    name: "{{ vault_postgres_replication_user }}"
+    password: "{{ vault_postgres_replication_password }}"
     role_attr_flags: REPLICATION
   become_user: postgres
-  when: postgresql_service.stat.exists or postgresql_versioned_service.stdout != ""
+  when: postgresql_service_exists
 
 - name: Configure PostgreSQL for replication
   lineinfile:
@@ -90,20 +100,20 @@
     - { regexp: '^#?wal_keep_size', line: "wal_keep_size = 64MB" }
     - { regexp: '^#?hot_standby', line: "hot_standby = on" }
   notify: restart postgresql
-  when: postgresql_service.stat.exists or postgresql_versioned_service.stdout != ""
+  when: postgresql_service_exists
 
 - name: Configure pg_hba.conf for replication
   blockinfile:
     path: "/etc/postgresql/{{ pg_version.stdout }}/main/pg_hba.conf"
     block: |
       # Replication connections
-      host replication {{ vault_db_replication_user }} 192.168.0.208/32 md5
+      host replication {{ vault_postgres_replication_user }} 192.168.0.208/32 md5
       # Application connections
       host {{ db_name }} {{ db_user }} 192.168.0.209/32 md5
       host {{ db_name }} {{ db_user }} 127.0.0.1/32 md5
     backup: yes
   notify: restart postgresql
-  when: postgresql_service.stat.exists or postgresql_versioned_service.stdout != ""
+  when: postgresql_service_exists
 
 - name: Create clicks table
   postgresql_query:
@@ -132,7 +142,7 @@
       CREATE INDEX IF NOT EXISTS idx_clicks_ip ON clicks(ip_address);
       CREATE INDEX IF NOT EXISTS idx_clicks_decision ON clicks(decision);
   become_user: postgres
-  when: postgresql_service.stat.exists or postgresql_versioned_service.stdout != ""
+  when: postgresql_service_exists
 
 - name: Setup backup script
   template:

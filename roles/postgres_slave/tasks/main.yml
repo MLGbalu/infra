@@ -13,37 +13,47 @@
   shell: "ls /etc/postgresql/ | head -1"
   register: pg_version
   changed_when: false
+  check_mode: no
 
 - name: Check if postgresql service exists
   stat:
-    path: /lib/systemd/system/postgresql.service
-  register: postgresql_service
+    path: "{{ item }}"
+  register: postgresql_service_checks
+  loop:
+    - /lib/systemd/system/postgresql.service
+    - /usr/lib/systemd/system/postgresql.service
+  check_mode: no
 
 - name: Check if postgresql@version service exists
   shell: "systemctl list-unit-files | grep postgresql@ | head -1 | awk '{print $1}'"
   register: postgresql_versioned_service
   changed_when: false
   ignore_errors: yes
+  check_mode: no
+
+- name: Set postgresql service exists fact
+  set_fact:
+    postgresql_service_exists: "{{ postgresql_service_checks.results | selectattr('stat.exists') | list | length > 0 or postgresql_versioned_service.stdout != '' }}"
 
 - name: Stop PostgreSQL service (standard)
   systemd:
     name: postgresql
     state: stopped
-  when: postgresql_service.stat.exists
+  when: postgresql_service_checks.results | selectattr('stat.exists') | list | length > 0
   ignore_errors: yes
 
 - name: Stop PostgreSQL service (versioned)
   systemd:
     name: "{{ postgresql_versioned_service.stdout }}"
     state: stopped
-  when: postgresql_versioned_service.stdout != "" and not postgresql_service.stat.exists
+  when: postgresql_versioned_service.stdout != ""
   ignore_errors: yes
 
 - name: Remove existing data directory
   file:
     path: "/var/lib/postgresql/{{ pg_version.stdout }}/main"
     state: absent
-  when: postgresql_service.stat.exists or postgresql_versioned_service.stdout != ""
+  when: postgresql_service_exists
 
 - name: Create empty data directory
   file:
@@ -52,7 +62,7 @@
     owner: postgres
     group: postgres
     mode: '0700'
-  when: postgresql_service.stat.exists or postgresql_versioned_service.stdout != ""
+  when: postgresql_service_exists
 
 - name: Perform base backup from master
   shell: |
@@ -60,7 +70,7 @@
   become_user: postgres
   environment:
     PGPASSWORD: "{{ vault_db_replication_password }}"
-  when: postgresql_service.stat.exists or postgresql_versioned_service.stdout != ""
+  when: postgresql_service_exists
 
 - name: Create standby.signal file
   file:
@@ -68,7 +78,7 @@
     state: touch
     owner: postgres
     group: postgres
-  when: postgresql_service.stat.exists or postgresql_versioned_service.stdout != ""
+  when: postgresql_service_exists
 
 - name: Configure PostgreSQL for standby
   lineinfile:
@@ -81,14 +91,14 @@
     - { regexp: '^#?hot_standby', line: "hot_standby = on" }
     - { regexp: '^#?primary_conninfo', line: "primary_conninfo = 'host=192.168.0.207 port=5432 user={{ vault_db_replication_user }} password={{ vault_db_replication_password }}'" }
     - { regexp: '^#?promote_trigger_file', line: "promote_trigger_file = '/tmp/postgresql.trigger'" }
-  when: postgresql_service.stat.exists or postgresql_versioned_service.stdout != ""
+  when: postgresql_service_exists
 
 - name: Start and enable PostgreSQL (standard service)
   systemd:
     name: postgresql
     state: started
     enabled: yes
-  when: postgresql_service.stat.exists
+  when: postgresql_service_checks.results | selectattr('stat.exists') | list | length > 0
   ignore_errors: yes
 
 - name: Start and enable PostgreSQL (versioned service)
@@ -96,20 +106,20 @@
     name: "{{ postgresql_versioned_service.stdout }}"
     state: started
     enabled: yes
-  when: postgresql_versioned_service.stdout != "" and not postgresql_service.stat.exists
+  when: postgresql_versioned_service.stdout != ""
   ignore_errors: yes
 
 - name: Debug PostgreSQL service issue
   debug:
     msg: "PostgreSQL service not found. Checked: postgresql and versioned services"
-  when: not postgresql_service.stat.exists and postgresql_versioned_service.stdout == ""
+  when: not postgresql_service_exists
 
 - name: Wait for PostgreSQL to start
   wait_for:
     port: 5432
     host: localhost
     timeout: 30
-  when: postgresql_service.stat.exists or postgresql_versioned_service.stdout != ""
+  when: postgresql_service_exists
 
 - name: Verify replication status
   postgresql_query:
@@ -117,9 +127,9 @@
     query: "SELECT * FROM pg_stat_replication;"
   become_user: postgres
   register: replication_status
-  when: postgresql_service.stat.exists or postgresql_versioned_service.stdout != ""
+  when: postgresql_service_exists
 
 - name: Display replication status
   debug:
     var: replication_status.query_result
-  when: postgresql_service.stat.exists or postgresql_versioned_service.stdout != ""
+  when: postgresql_service_exists
