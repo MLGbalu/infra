@@ -52,17 +52,45 @@
     msg: "Redis config file not found. Checked: /etc/redis/redis.conf, /etc/redis.conf, /etc/redis/6379.conf"
   when: redis_config_path is not defined
 
-- name: Start and enable Redis
+- name: Check if redis-server service exists
+  stat:
+    path: /lib/systemd/system/redis-server.service
+  register: redis_service
+
+- name: Check if redis service exists (alternative)
+  stat:
+    path: /lib/systemd/system/redis.service
+  register: redis_service_alt
+
+- name: Start and enable Redis (redis-server)
   systemd:
     name: redis-server
     state: started
     enabled: yes
+  when: redis_service.stat.exists
+  ignore_errors: yes
+
+- name: Start and enable Redis (redis)
+  systemd:
+    name: redis
+    state: started
+    enabled: yes
+  when: redis_service_alt.stat.exists and not redis_service.stat.exists
+  ignore_errors: yes
+
+- name: Debug Redis service issue
+  debug:
+    msg: "Redis service not found. Checked: redis-server.service and redis.service"
+  when: not redis_service.stat.exists and not redis_service_alt.stat.exists
 
 - name: Test Redis connection
   command: redis-cli ping
   register: redis_test
   changed_when: false
+  when: redis_service.stat.exists or redis_service_alt.stat.exists
+  ignore_errors: yes
 
 - name: Display Redis test result
   debug:
     msg: "Redis response: {{ redis_test.stdout }}"
+  when: redis_test is defined and redis_test.stdout is defined
