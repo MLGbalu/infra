@@ -6,9 +6,26 @@
       - python3-redis
     state: present
 
+- name: Check Redis config file locations
+  stat:
+    path: "{{ item }}"
+  register: redis_config_files
+  loop:
+    - /etc/redis/redis.conf
+    - /etc/redis.conf
+    - /etc/redis/6379.conf
+
+- name: Set Redis config path
+  set_fact:
+    redis_config_path: "{{ item.item }}"
+  when: item.stat.exists
+  loop: "{{ redis_config_files.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
 - name: Configure Redis
   lineinfile:
-    path: /etc/redis/redis.conf
+    path: "{{ redis_config_path }}"
     regexp: "{{ item.regexp }}"
     line: "{{ item.line }}"
     backup: yes
@@ -18,16 +35,22 @@
     - { regexp: '^# maxmemory-policy', line: 'maxmemory-policy allkeys-lru' }
     - { regexp: '^save', line: 'save 900 1' }
     - { regexp: '^appendonly', line: 'appendonly yes' }
+  when: redis_config_path is defined
   notify: restart redis
 
 - name: Set Redis password if defined
   lineinfile:
-    path: /etc/redis/redis.conf
+    path: "{{ redis_config_path }}"
     regexp: '^# requirepass'
     line: 'requirepass {{ redis_password }}'
     backup: yes
-  when: redis_password != ""
+  when: redis_password != "" and redis_config_path is defined
   notify: restart redis
+
+- name: Debug Redis config issue
+  debug:
+    msg: "Redis config file not found. Checked: /etc/redis/redis.conf, /etc/redis.conf, /etc/redis/6379.conf"
+  when: redis_config_path is not defined
 
 - name: Start and enable Redis
   systemd:
