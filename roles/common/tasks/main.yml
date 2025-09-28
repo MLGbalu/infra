@@ -122,12 +122,32 @@
   notify: restart fail2ban
   when: inventory_hostname in groups['nginx']
 
+- name: Wait for fail2ban to be ready
+  wait_for:
+    path: /var/run/fail2ban/fail2ban.sock
+    timeout: 30
+  ignore_errors: yes
+
 - name: Start and enable fail2ban
   systemd:
     name: fail2ban
     state: started
     enabled: yes
     daemon_reload: yes
+  ignore_errors: yes
+
+- name: Check fail2ban status
+  command: systemctl is-active fail2ban
+  register: fail2ban_status
+  ignore_errors: yes
+
+- name: Force restart fail2ban if needed
+  systemd:
+    name: fail2ban
+    state: restarted
+    daemon_reload: yes
+  when: fail2ban_status.stdout != "active"
+  ignore_errors: yes
 
 - name: Set timezone
   timezone:
