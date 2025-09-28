@@ -127,11 +127,51 @@
       }
     dest: /etc/logrotate.d/{{ domain }}
 
-- name: Start and enable services
+- name: Check if nginx service exists
+  stat:
+    path: "{{ item }}"
+  register: nginx_service_checks
+  loop:
+    - /lib/systemd/system/nginx.service
+    - /usr/lib/systemd/system/nginx.service
+  check_mode: no
+
+- name: Check if php-fpm service exists
+  stat:
+    path: "{{ item }}"
+  register: php_fpm_service_checks
+  loop:
+    - /lib/systemd/system/php{{ actual_php_version }}-fpm.service
+    - /usr/lib/systemd/system/php{{ actual_php_version }}-fpm.service
+  check_mode: no
+
+- name: Set service exists facts
+  set_fact:
+    nginx_service_exists: "{{ nginx_service_checks.results | selectattr('stat.exists') | list | length > 0 }}"
+    php_fpm_service_exists: "{{ php_fpm_service_checks.results | selectattr('stat.exists') | list | length > 0 }}"
+
+- name: Start and enable nginx
   systemd:
-    name: "{{ item }}"
+    name: nginx
     state: started
     enabled: yes
-  loop:
-    - nginx
-    - php{{ actual_php_version }}-fpm
+  when: nginx_service_exists
+  ignore_errors: yes
+
+- name: Start and enable PHP-FPM
+  systemd:
+    name: php{{ actual_php_version }}-fpm
+    state: started
+    enabled: yes
+  when: php_fpm_service_exists
+  ignore_errors: yes
+
+- name: Debug nginx service issue
+  debug:
+    msg: "Nginx service not found. Checked: /lib/systemd/system/ and /usr/lib/systemd/system/"
+  when: not nginx_service_exists
+
+- name: Debug PHP-FPM service issue
+  debug:
+    msg: "PHP-FPM service not found. Checked: /lib/systemd/system/ and /usr/lib/systemd/system/ for php{{ actual_php_version }}-fpm.service"
+  when: not php_fpm_service_exists
