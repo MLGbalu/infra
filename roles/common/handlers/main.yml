@@ -3,3 +3,4 @@
   systemd:
     name: fail2ban
     state: restarted
+  ignore_errors: yes
